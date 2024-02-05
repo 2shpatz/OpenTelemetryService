@@ -1,15 +1,50 @@
 import os
 import logging
 
+from prometheus_client import start_http_server
+
+from opentelemetry import trace
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.exporter.jaeger import JaegerSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchExportSpanProcessor
+from prometheus_client import start_http_server, Gauge
+import psutil
 from flask import Flask, jsonify
 import requests
 
-class DataApi():
+class OpenTelemetry():
+    def __init__(self) -> None:
+        self.service_name = "observability"
+        trace.set_tracer_provider(TracerProvider())
+        self.tracer = trace.get_tracer(__name__)
+    
+        self.jaeger_exporter = JaegerSpanExporter(
+                                service_name=self.service_name,
+                                agent_host_name="localhost",
+                                agent_port=6831,
+                            )
+        
+        trace.get_tracer_provider().add_span_processor(
+                                BatchExportSpanProcessor(self.jaeger_exporter)
+                            )
+        
+        self.start_prometheus_client()
+
+    def start_prometheus_client(self):
+        start_http_server(port=8000, addr="localhost")
+        self.cpu_usage_metric = Gauge('cpu_usage_percent', 'CPU Usage Percentage')
+        self.memory_usage_metric = Gauge('memory_usage_percent', 'Memory Usage Percentage')
+
+
+
+class DataApi(OpenTelemetry):
     def __init__(self, port=os.getenv("APP_PORT")) -> None:
         super().__init__()
         self.app = Flask(__name__)
         self.app_port = port
         self.default_headers = {'accept': 'application/json'}
+        FlaskInstrumentor().instrument_app(self.app)
         
     def get_request_headers(self):
         http_response = requests.get('https://httpbin.org/headers', headers=self.default_headers)
