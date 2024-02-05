@@ -1,0 +1,10 @@
+version: "2.3"
+services:
+  observability:
+    build: .
+    environment:
+      - APP_PORT=5000
+
+    ports: 
+      - 8080:5000
+    restart: always
