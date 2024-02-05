@@ -2,12 +2,14 @@ import os
 import logging
 
 from prometheus_client import start_http_server
-
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+)
 from opentelemetry import trace
-from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.exporter.jaeger import JaegerSpanExporter
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchExportSpanProcessor
 from prometheus_client import start_http_server, Gauge
 import psutil
 from flask import Flask, jsonify
@@ -18,18 +20,32 @@ class OpenTelemetry():
         self.service_name = "observability"
         trace.set_tracer_provider(TracerProvider())
         self.tracer = trace.get_tracer(__name__)
-    
-        self.jaeger_exporter = JaegerSpanExporter(
-                                service_name=self.service_name,
-                                agent_host_name="localhost",
-                                agent_port=6831,
-                            )
+
+        self.current_span = trace.get_current_span()
+
+        # self.jaeger_exporter = JaegerSpanExporter(
+        #                         service_name=self.service_name,
+        #                         agent_host_name="localhost",
+        #                         agent_port=6831,
+        #                     )
+        # 
+        # self.span_processor = BatchSpanProcessor(self.jaeger_exporter)
+        # trace.get_tracer_provider().add_span_processor(self.span_processor)
+
         
-        trace.get_tracer_provider().add_span_processor(
-                                BatchExportSpanProcessor(self.jaeger_exporter)
-                            )
-        
-        self.start_prometheus_client()
+        # self.start_prometheus_client()
+
+    def set_span(self):
+
+        self.current_span.set_attribute("service.cpu", self.get_cpu())
+        self.current_span.set_attribute("service.memory", self.get_memory())
+
+
+    def do_work(self):
+        with self.tracer.start_as_current_span("span-name") as span:
+            # do some work that 'span' will track
+            print("doing some work...")
+            # When the 'with' block goes out of scope, 'span' is closed for you
 
     def start_prometheus_client(self):
         start_http_server(port=8000, addr="localhost")
@@ -44,7 +60,8 @@ class DataApi(OpenTelemetry):
         self.app = Flask(__name__)
         self.app_port = port
         self.default_headers = {'accept': 'application/json'}
-        FlaskInstrumentor().instrument_app(self.app)
+        opentelemetry.instrumentation.requests.RequestsInstrumentor().instrument()
+
         
     def get_request_headers(self):
         http_response = requests.get('https://httpbin.org/headers', headers=self.default_headers)

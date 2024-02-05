@@ -6,3 +6,6 @@ opentelemetry-instrumentation
 psutil
 prometheus_client
 opentelemetry-instrumentation-flask
+opentelemetry-exporter-otlp
+opentelemetry-exporter-otlp-proto-http
+opentelemetry-instrumentation-requests
